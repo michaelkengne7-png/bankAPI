@@ -7,7 +7,9 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
-app = FastAPI(title="API Banque", description="Système bancaire complet avec authentification")
+app = FastAPI(title="API Banque", description="Système bancaire complet avec authentification \
+Consultez la documentation détaillée ici :  \
+https://github.com/michaelkengne7-png/bankAPI/blob/main/GUIDE_SWAGGER.md")
 
 # Configuration JWT
 SECRET_KEY = "votre-cle-secrete-tres-longue-et-complexe"
