@@ -15,7 +15,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Configuration密码
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Modèles
@@ -113,45 +113,58 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 # créer un compte
 @app.post("/comptes/", response_model=CompteResponse)
 def creer_compte(compte: CompteCreate):
-    # Vérifier email unique
-    for c in comptes_db:
-        if c.email == compte.email:
-            raise HTTPException(status_code=400, detail="Email déjà utilisé")
-    
-    # Valider solde initial
-    if compte.solde_initial < 0:
-        raise HTTPException(status_code=400, detail="Le solde initial ne peut pas être négatif")
+    try:
+        print("AVANT VERIFICATION EMAIL")
+        # Vérifier email unique
+        for c in comptes_db:
+            if c.email == compte.email:
+                raise HTTPException(status_code=400, detail="Email déjà utilisé")
+        
+        print("AVANT VALIDATION SOLDE")
+        # Valider solde initial
+        if compte.solde_initial < 0:
+            raise HTTPException(status_code=400, detail="Le solde initial ne peut pas être négatif")
 
-    nouveau = Compte(
-        id=str(uuid.uuid4())[:8],
-        nom=compte.nom,
-        email=compte.email,
-        solde=compte.solde_initial,
-        date_creation=str(datetime.now()),
-        code_hash=get_password_hash(compte.code)
-    )
+        print("AVANT HASH")
+        code_hash = get_password_hash(compte.code)
+        print("APRES HASH")
 
-    comptes_db.append(nouveau)
-    
-    # Créer transaction de dépôt initial si > 0
-    if compte.solde_initial > 0:
-        transaction = Transaction(
+        nouveau = Compte(
             id=str(uuid.uuid4())[:8],
-            type="depot",
-            montant=compte.solde_initial,
-            date=str(datetime.now()),
-            description="Dépôt initial",
-            compte_destination=nouveau.id
+            nom=compte.nom,
+            email=compte.email,
+            solde=compte.solde_initial,
+            date_creation=str(datetime.now()),
+            code_hash=code_hash
         )
-        transactions_db.append(transaction)
-    
-    return CompteResponse(
-        id=nouveau.id,
-        nom=nouveau.nom,
-        email=nouveau.email,
-        solde=nouveau.solde,
-        date_creation=nouveau.date_creation
-    )
+
+        print("AVANT AJOUT DB")
+        comptes_db.append(nouveau)
+        
+        # Créer transaction de dépôt initial si > 0
+        if compte.solde_initial > 0:
+            transaction = Transaction(
+                id=str(uuid.uuid4())[:8],
+                type="depot",
+                montant=compte.solde_initial,
+                date=str(datetime.now()),
+                description="Dépôt initial",
+                compte_destination=nouveau.id
+            )
+            transactions_db.append(transaction)
+        
+        print("AVANT RETOUR")
+        return CompteResponse(
+            id=nouveau.id,
+            nom=nouveau.nom,
+            email=nouveau.email,
+            solde=nouveau.solde,
+            date_creation=nouveau.date_creation
+        )
+
+    except Exception as e:
+        print("ERREUR DANS CREATION COMPTE:", str(e))
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
 
 # Connexion
 @app.post("/token", response_model=Token)
