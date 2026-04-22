@@ -147,5 +147,4 @@ Affiche tous les comptes existants (nécessite d'être connecté).
 
 - Les données sont stockées en mémoire (perdues au redémarrage)
 - Les tokens expirent après 30 minutes
-- Tous les montants sont en euros
 - Les IDs de comptes sont des UUID tronqués (8 caractères)

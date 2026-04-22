@@ -18,14 +18,10 @@ app = FastAPI(
     - **Opérations bancaires** : dépôts, retraits, transferts
     - **Recherche de comptes** par nom/email/ID
     - **Historique des transactions**
+    - **Suppression de comptes** (avec validation)
     
     ### Documentation complète :
     Consultez le guide d'utilisation détaillé : **[GUIDE_SWAGGER.md](https://github.com/michaelkengne7-png/bankAPI/blob/main/GUIDE_SWAGGER.md)**
-    
-    ### Quick start :
-    1. Créez un compte avec `POST /comptes/`
-    2. Connectez-vous avec `POST /token`
-    3. Utilisez le token pour accéder aux routes protégées
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -37,7 +33,7 @@ SECRET_KEY = "votre-cle-secrete-tres-longue-et-complexe"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Configuration密码
+# Configuration du hashage de mots de passe
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -91,6 +87,10 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+class SuppressionCompteRequest(BaseModel):
+    confirmation: bool
+    mot_de_passe: str
 
 # "Base de données"
 comptes_db: List[Compte] = []
@@ -250,7 +250,7 @@ def depot(depot_request: DepotRequest, current_user: Compte = Depends(get_curren
     )
     transactions_db.append(transaction)
     
-    return {"message": f"Dépôt de {depot_request.montant}€ effectué", "nouveau_solde": current_user.solde}
+    return {"message": f"Dépôt de {depot_request.montant} FCFA effectué", "nouveau_solde": current_user.solde}
 
 # Retrait
 @app.post("/retrait")
@@ -275,7 +275,7 @@ def retrait(retrait_request: RetraitRequest, current_user: Compte = Depends(get_
     )
     transactions_db.append(transaction)
     
-    return {"message": f"Retrait de {retrait_request.montant}€ effectué", "nouveau_solde": current_user.solde}
+    return {"message": f"Retrait de {retrait_request.montant} FCFA effectué", "nouveau_solde": current_user.solde}
 
 # Transfert
 @app.post("/transfert")
@@ -322,7 +322,7 @@ def transfert(transfert_request: TransfertRequest, current_user: Compte = Depend
     transactions_db.extend([transaction_source, transaction_dest])
     
     return {
-        "message": f"Transfert de {transfert_request.montant}€ vers {compte_dest.nom} effectué",
+        "message": f"Transfert de {transfert_request.montant} FCFA vers {compte_dest.nom} effectué",
         "nouveau_solde": current_user.solde
     }
 
@@ -358,3 +358,36 @@ def obtenir_transactions(current_user: Compte = Depends(get_current_user)):
     mes_transactions.sort(key=lambda x: x.date, reverse=True)
     
     return mes_transactions
+
+# Suppression de compte
+@app.delete("/comptes/{compte_id}")
+def supprimer_compte(compte_id: str, suppression_request: SuppressionCompteRequest, current_user: Compte = Depends(get_current_user)):
+    # Vérifier que l'utilisateur peut supprimer ce compte (soit le sien, soit admin)
+    if compte_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez supprimer que votre propre compte")
+    
+    # Vérifier la confirmation
+    if not suppression_request.confirmation:
+        raise HTTPException(status_code=400, detail="La confirmation est requise pour supprimer le compte")
+    
+    # Vérifier le mot de passe
+    if not verifier_password(suppression_request.mot_de_passe, current_user.code_hash):
+        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+    
+    # Vérifier que le solde est zéro
+    if current_user.solde != 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Impossible de supprimer le compte avec un solde de {current_user.solde} FCFA. Le solde doit être zéro."
+        )
+    
+    # Supprimer les transactions associées
+    transactions_db[:] = [
+        t for t in transactions_db 
+        if t.compte_source != compte_id and t.compte_destination != compte_id
+    ]
+    
+    # Supprimer le compte
+    comptes_db[:] = [c for c in comptes_db if c.id != compte_id]
+    
+    return {"message": "Compte supprimé avec succès"}
